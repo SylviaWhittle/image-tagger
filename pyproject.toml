@@ -1,0 +1,18 @@
+[project]
+name = "image-tagger"
+version = "0.1.0"
+description = "Program for tagging images"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pyqt6>=6.11.0",
+    "ruamel-yaml>=0.19.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.2",
+]
+
+[project.scripts]
+image-tagger = "image_tagger.main:main"

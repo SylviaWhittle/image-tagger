@@ -1,0 +1,15 @@
+config_version: 0.1
+input_dir: ./
+output_dir: ./tagged-output/
+# tags - each tag needs a name and a number keybind, ie "1", "2" etc.
+tags:
+  - name: "double_strand_break"
+    number_keybind: "1"
+  - name: "bad_tracing"
+    number_keybind: "2"
+  - name: "beak_full_merge"
+    number_keybind: "3"
+  - name: "beak_partial_merge"
+    number_keybind: "4"
+  - name: "beak_pinch"
+    number_keybind: "5"
