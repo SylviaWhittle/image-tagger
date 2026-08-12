@@ -9,13 +9,12 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeyEvent, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
-    QDialog,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
-    QWidget,
-    QHBoxLayout,
     QVBoxLayout,
-    QFrame,
+    QWidget,
 )
 from ruamel.yaml import YAML
 
@@ -127,6 +126,19 @@ class MainWindow(QMainWindow):
 
         self.show_current_image()  # show the first image
 
+    def update_status_text(self, image_path: Path):
+        untagged = self.get_untagged_images()
+        untagged_count = len(untagged)
+
+        first_10_indexes = [index for index, _ in untagged[:10]]
+        first_10_text = ", ".join(str(index) for index in first_10_indexes)
+
+        self.status_label.setText(
+            f"Image {self.current_image_index} / {len(self.image_files) - 1} : {image_path.name}\n"
+            f"Untagged images: {untagged_count} / {len(self.image_files)}\n"
+            f"First 10 untagged image indexes: {first_10_text}"
+        )
+
     def update_tag_badges(self):
         state = self.image_tag_state[self.image_files[self.current_image_index]]
         for tag_name, tag_label in self.tag_badges.items():
@@ -144,9 +156,7 @@ class MainWindow(QMainWindow):
             image_path = self.image_files[self.current_image_index]
             pixel_map = QPixmap(str(image_path))
             self.image_label.setPixmap(pixel_map)
-            self.status_label.setText(
-                f"Image {self.current_image_index + 1}/{len(self.image_files)}: {image_path.name}"
-            )
+            self.update_status_text(image_path)
             # if the image is tagged, render the status label in green
             if self.image_tag_state[image_path]["tagged"]:
                 self.status_label.setStyleSheet("color: lime; font-weight: 600;")
@@ -205,6 +215,14 @@ class MainWindow(QMainWindow):
         # save the image_tag_state to a csv file in the output directory
         self.save_tags_to_csv()
         super().closeEvent(event)
+
+    def get_untagged_images(self) -> list[tuple[int, Path]]:
+        """Get a list of untagged image path and their index in the list."""
+        untagged_images = []
+        for index, image_path in enumerate(self.image_files):
+            if not self.image_tag_state[image_path]["tagged"]:
+                untagged_images.append((index, image_path))
+        return untagged_images
 
 
 def main():
