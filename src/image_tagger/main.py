@@ -28,31 +28,56 @@ class MainWindow(QMainWindow):
         image_files: list[Path],
         tags: list[dict[str, str]],
         output_dir: Path,
+        image_tag_state: dict[Path, dict[str, bool | str]],
     ):
         super().__init__()
         self.image_files = image_files
         self.output_dir = output_dir
         self.current_image_index = 0
+        self.image_tag_state = image_tag_state
 
         assert len(tags) > 0, "No tags provided in the config file."
         assert len(tags) <= 10, "Too many tags to handle currently. Ask for more to be supported."
 
         # tag initialisation
-        self.image_tag_state: dict[Path, dict[str, bool | str]] = {}
         self.tags_by_key: dict[str, str] = {tag["number_keybind"].lower(): tag["name"] for tag in tags}
         self.tag_names: list[str] = [tag["name"] for tag in tags]
 
         # image state initialisation
+        logger.info(f"Checking for existing tags for {len(self.image_files)} images.")
         for image_file in self.image_files:
-            filename = image_file.name
-            folder = image_file.parent
-            self.image_tag_state[image_file] = {
-                "filename": filename,
-                "folder": str(folder),
-            }
-            # Initialise all tags to False
-            for tag_name in self.tags_by_key.values():
-                self.image_tag_state[image_file][tag_name] = False
+            if image_file in self.image_tag_state:
+                # check that the existing tags in the state match the tags in the config file
+                # Check that the base tags are present (filename, folder, tagged)
+                existing_tags = self.image_tag_state[image_file]
+                if "filename" not in existing_tags:
+                    existing_tags["filename"] = image_file.name
+                if "folder" not in existing_tags:
+                    existing_tags["folder"] = str(image_file.parent)
+                if "tagged" not in existing_tags:
+                    existing_tags["tagged"] = False
+                # Check that all tags in the config file are present in the existing tags
+                for tag_name in self.tag_names:
+                    if tag_name not in existing_tags:
+                        existing_tags[tag_name] = False
+                # Check that there are no extra tags in the existing tags that are not in the config
+                for tag_name in list(existing_tags.keys()):
+                    if tag_name not in self.tag_names and tag_name not in ["filename", "folder", "tagged"]:
+                        logger.warning(
+                            f"Extra tag '{tag_name}' found in existing tags for image '{image_file}'. Removing it."
+                        )
+                        del existing_tags[tag_name]
+            else:
+                filename = image_file.name
+                folder = image_file.parent
+                self.image_tag_state[image_file] = {
+                    "filename": filename,
+                    "folder": str(folder),
+                    "tagged": False,
+                }
+                # Initialise all tags to False
+                for tag_name in self.tags_by_key.values():
+                    self.image_tag_state[image_file][tag_name] = False
 
         # UI
         root = QWidget()  # root widget for main window
@@ -122,6 +147,11 @@ class MainWindow(QMainWindow):
             self.status_label.setText(
                 f"Image {self.current_image_index + 1}/{len(self.image_files)}: {image_path.name}"
             )
+            # if the image is tagged, render the status label in green
+            if self.image_tag_state[image_path]["tagged"]:
+                self.status_label.setStyleSheet("color: lime; font-weight: 600;")
+            else:
+                self.status_label.setStyleSheet("color: white; font-weight: 600;")
             self.update_tag_badges()
 
     def keyPressEvent(self, event: QKeyEvent):
@@ -132,6 +162,7 @@ class MainWindow(QMainWindow):
             image_path = self.image_files[self.current_image_index]
             self.image_tag_state[image_path][tag_name] = not self.image_tag_state[image_path][tag_name]
             self.update_tag_badges()
+            self.save_tags_to_csv()
             return
 
         # if press right arrow, go to next image
@@ -145,6 +176,35 @@ class MainWindow(QMainWindow):
             self.current_image_index -= 1
             self.current_image_index = max(self.current_image_index, 0)
             self.show_current_image()
+        # if press enter, mark image as tagged and go to next image
+        elif event.key() == 16777220:  # enter key
+            image_path = self.image_files[self.current_image_index]
+            self.image_tag_state[image_path]["tagged"] = True
+            self.current_image_index += 1
+            if self.current_image_index >= len(self.image_files):
+                self.current_image_index = len(self.image_files) - 1
+            self.save_tags_to_csv()
+            self.show_current_image()
+        # if press space, leave image as untagged and go to next image
+        elif event.key() == 32:  # space key
+            image_path = self.image_files[self.current_image_index]
+            self.image_tag_state[image_path]["tagged"] = False
+            self.current_image_index += 1
+            if self.current_image_index >= len(self.image_files):
+                self.current_image_index = len(self.image_files) - 1
+            self.save_tags_to_csv()
+            self.show_current_image()
+
+    def save_tags_to_csv(self):
+        # save the image_tag_state to a csv file in the output directory
+        output_file_path = self.output_dir / "image_tags.csv"
+        df = pd.DataFrame.from_dict(self.image_tag_state, orient="index")
+        df.to_csv(output_file_path)
+
+    def closeEvent(self, event):
+        # save the image_tag_state to a csv file in the output directory
+        self.save_tags_to_csv()
+        super().closeEvent(event)
 
 
 def main():
@@ -173,6 +233,22 @@ def main():
         output_dir_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Created output directory: {output_dir_path}")
 
+    # If an existing tags csv is provided, load it and use that
+    if config.get("existing_tags_csv"):
+        existing_tags_csv_path = Path(config["existing_tags_csv"])
+        if existing_tags_csv_path.exists():
+            logger.info(f"Loading existing tags from {existing_tags_csv_path}")
+            df_existing_tags = pd.read_csv(existing_tags_csv_path, index_col=0)
+            # Convert to path
+            df_existing_tags.index = df_existing_tags.index.map(Path)
+            # convert the dataframe to a dict of dicts
+            image_tag_state = df_existing_tags.to_dict(orient="index")
+        else:
+            logger.warning(f"Existing tags csv does not exist: {existing_tags_csv_path}")
+            image_tag_state = {}
+    else:
+        image_tag_state = {}
+
     # recursively find all image files in the input directory
     image_files = (
         list(input_dir_path.rglob("*.png")) + list(input_dir_path.rglob("*.jpg")) + list(input_dir_path.rglob("*.jpeg"))
@@ -184,9 +260,7 @@ def main():
     # Create the application and window
     app = QApplication(sys.argv)
     window = MainWindow(
-        image_files=image_files,
-        tags=config["tags"],
-        output_dir=output_dir_path,
+        image_files=image_files, tags=config["tags"], output_dir=output_dir_path, image_tag_state=image_tag_state
     )
     window.show()
 
