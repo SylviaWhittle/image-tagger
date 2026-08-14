@@ -1,8 +1,13 @@
 config_version: 0.1
 input_dir: ./
 output_dir: ./tagged-output/
-existing_tags_csv: ./tagged-output/image_tags.csv # Options: path or null.
+existing_tags_csv: ./tagged-output/image_tags.csv # Options: path or null. Can use this to save state, so you can
+# stop and restart tagging later. If you don't want to use this, set to null.
+
 # tags - each tag needs a name and a number keybind, ie "1", "2" etc.
+# example:
+# - name: "protein_bound"
+#   number_keybind: "1"
 tags:
   - name: "double_strand_break"
     number_keybind: "1"
