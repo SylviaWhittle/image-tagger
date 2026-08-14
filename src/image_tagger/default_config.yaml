@@ -14,5 +14,7 @@ tags:
     number_keybind: "4"
   - name: "beak_pinch"
     number_keybind: "5"
-  - name: "unsure"
+  - name: "hinge"
     number_keybind: "6"
+  - name: "unsure"
+    number_keybind: "7"
