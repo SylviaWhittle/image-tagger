@@ -1,5 +1,6 @@
 """Main program loop."""
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -141,7 +142,7 @@ class MainWindow(QMainWindow):
 
     def update_tag_badges(self):
         state = self.image_tag_state[self.image_files[self.current_image_index]]
-        for tag_name, tag_label in self.tag_badges.items():
+        for tag_name in self.tag_badges:
             if state[tag_name]:
                 self.tag_badges[tag_name].setStyleSheet(
                     "background: #fff; color: #000; border: 1px solid #000; font-weight: 700;"
@@ -164,8 +165,10 @@ class MainWindow(QMainWindow):
                 self.status_label.setStyleSheet("color: white; font-weight: 600;")
             self.update_tag_badges()
 
-    def keyPressEvent(self, event: QKeyEvent):
-        key = event.text().lower()
+    def keyPressEvent(self, a0: QKeyEvent | None) -> None:
+        if not a0:
+            return
+        key = a0.text().lower()
         # check if it matches a tag keybind
         if key in self.tags_by_key:
             tag_name = self.tags_by_key[key]
@@ -176,18 +179,18 @@ class MainWindow(QMainWindow):
             return
 
         # if press right arrow, go to next image
-        if event.key() == 16777236:  # right arrow key
+        if a0.key() == 16777236:  # right arrow key
             self.current_image_index += 1
             if self.current_image_index >= len(self.image_files):
                 self.current_image_index = len(self.image_files) - 1
             self.show_current_image()
         # if press left arrow, go to previous image
-        elif event.key() == 16777234:  # left arrow key
+        elif a0.key() == 16777234:  # left arrow key
             self.current_image_index -= 1
             self.current_image_index = max(self.current_image_index, 0)
             self.show_current_image()
         # if press enter, mark image as tagged and go to next image
-        elif event.key() == 16777220:  # enter key
+        elif a0.key() == 16777220:  # enter key
             image_path = self.image_files[self.current_image_index]
             self.image_tag_state[image_path]["tagged"] = True
             self.current_image_index += 1
@@ -196,7 +199,7 @@ class MainWindow(QMainWindow):
             self.save_tags_to_csv()
             self.show_current_image()
         # if press space, leave image as untagged and go to next image
-        elif event.key() == 32:  # space key
+        elif a0.key() == 32:  # space key
             image_path = self.image_files[self.current_image_index]
             self.image_tag_state[image_path]["tagged"] = False
             self.current_image_index += 1
@@ -211,10 +214,10 @@ class MainWindow(QMainWindow):
         df = pd.DataFrame.from_dict(self.image_tag_state, orient="index")
         df.to_csv(output_file_path)
 
-    def closeEvent(self, event):
+    def closeEvent(self, a0):
         # save the image_tag_state to a csv file in the output directory
         self.save_tags_to_csv()
-        super().closeEvent(event)
+        super().closeEvent(a0)
 
     def get_untagged_images(self) -> list[tuple[int, Path]]:
         """Get a list of untagged image path and their index in the list."""
@@ -225,17 +228,51 @@ class MainWindow(QMainWindow):
         return untagged_images
 
 
+def create_default_config_file(output_path: Path) -> None:
+    if output_path.exists():
+        raise FileExistsError(f"File already exists: {output_path}")
+    # Get the default config from the source code
+    default_config_path = Path(__file__).parent / "default_config.yaml"
+    with open(default_config_path, "r") as f:
+        default_config = yaml.load(f)
+    with open(output_path, "w") as f:
+        yaml.dump(default_config, f)
+
+
+def build_argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Image Tagger")
+    # Add a command parameter
+    sub_parser = parser.add_subparsers(dest="command", required=True)
+
+    # Add subparsers for different commands
+    run_parser = sub_parser.add_parser("run", help="Run the image tagger")
+    run_parser.add_argument("-c", "--config", type=str, required=True, help="Path to the config file (YAML format)")
+
+    create_config_parser = sub_parser.add_parser("create-config", help="Create a default config file")
+    create_config_parser.add_argument(
+        "-o", "--output", type=str, required=True, help="Path to save the default config file"
+    )
+
+    return parser
+
+
 def main():
 
-    # grab the config path from the -c argument
-    # check if -c was passed
-    if "-c" in sys.argv:
-        config_file_path = Path(sys.argv[sys.argv.index("-c") + 1])
-        assert config_file_path.exists(), f"Config file does not exist: {config_file_path}"
-
-    else:
-        print("Usage: python image_tagger.py -c <config_path>")
-        sys.exit(1)
+    args = build_argument_parser().parse_args()
+    if args.command == "create-config":
+        output_path = Path(args.output)
+        try:
+            create_default_config_file(output_path)
+            logger.success(f"Created default config file at {output_path}")
+        except FileExistsError as e:
+            logger.error(str(e))
+            sys.exit(1)
+        sys.exit(0)
+    elif args.command == "run":
+        config_file_path = Path(args.config)
+        if not config_file_path.exists():
+            logger.error(f"Config file does not exist: {config_file_path}")
+            sys.exit(1)
 
     logger.info(f"config file path: {config_file_path}")
 
