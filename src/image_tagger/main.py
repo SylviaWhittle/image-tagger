@@ -39,21 +39,31 @@ class MainWindow(QMainWindow):
         assert len(tags) > 0, "No tags provided in the config file."
         assert len(tags) <= 10, "Too many tags to handle currently. Ask for more to be supported."
 
+        logger.info(f"Loaded {len(self.image_files)} images from the input directory.")
+        if len(self.image_tag_state) > 0:
+            logger.info(f"Loaded {len(self.image_tag_state)} images with existing tags from the provided CSV file.")
+
         # tag initialisation
         self.tags_by_key: dict[str, str] = {tag["number_keybind"].lower(): tag["name"] for tag in tags}
         self.tag_names: list[str] = [tag["name"] for tag in tags]
 
+        logger.info(f"First 10 entries in image tag state: {list(self.image_tag_state.items())[:10]}")
+
         # image state initialisation
         logger.info(f"Checking for existing tags for {len(self.image_files)} images.")
-        for image_file in self.image_files:
-            if image_file in self.image_tag_state:
+        num_existing_tags_identified = 0
+        for image_path in self.image_files:
+            logger.info(f"Checking for existing tags for image: {image_path}")
+            # get just the filename from the path without the directory, but include the extension
+            if image_path in self.image_tag_state:
+                logger.info(f"Found existing tags for image: {image_path}")
                 # check that the existing tags in the state match the tags in the config file
                 # Check that the base tags are present (filename, folder, tagged)
-                existing_tags = self.image_tag_state[image_file]
+                existing_tags = self.image_tag_state[image_path]
                 if "filename" not in existing_tags:
-                    existing_tags["filename"] = image_file.name
+                    existing_tags["filename"] = image_path.name
                 if "folder" not in existing_tags:
-                    existing_tags["folder"] = str(image_file.parent)
+                    existing_tags["folder"] = str(image_path.parent)
                 if "tagged" not in existing_tags:
                     existing_tags["tagged"] = False
                 # Check that all tags in the config file are present in the existing tags
@@ -64,20 +74,27 @@ class MainWindow(QMainWindow):
                 for tag_name in list(existing_tags.keys()):
                     if tag_name not in self.tag_names and tag_name not in ["filename", "folder", "tagged"]:
                         logger.warning(
-                            f"Extra tag '{tag_name}' found in existing tags for image '{image_file}'. Removing it."
+                            f"Extra tag '{tag_name}' found in existing tags for image '{image_path}'. Removing it."
                         )
                         del existing_tags[tag_name]
+                num_existing_tags_identified += 1
             else:
-                filename = image_file.name
-                folder = image_file.parent
-                self.image_tag_state[image_file] = {
+                # if the file is not in the existing tags dictionary, add it with default values
+                filename = image_path.name
+                folder = image_path.parent
+                self.image_tag_state[image_path] = {
                     "filename": filename,
                     "folder": str(folder),
                     "tagged": False,
                 }
                 # Initialise all tags to False
                 for tag_name in self.tags_by_key.values():
-                    self.image_tag_state[image_file][tag_name] = False
+                    self.image_tag_state[image_path][tag_name] = False
+
+        logger.info(
+            f"Initialised {num_existing_tags_identified} images with existing tags from the provided CSV"
+            f"file and {len(self.image_files) - num_existing_tags_identified} new images."
+        )
 
         # UI
         root = QWidget()  # root widget for main window
